@@ -4,14 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rleaas"
-version = "1.0.0"
+version = "1.0.2"
 description = "Release SDK — RL Environments as a Service by Centific"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
-authors = [
-    { name = "Centific", email = "support@centific.com" },
-]
 keywords = ["reinforcement-learning", "rl", "agent", "training", "rleaas"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -39,10 +35,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://centific.com"
-Documentation = "https://centific.com/rleaas/docs"
-Repository = "https://github.com/centific-ai/rleaas-sdk"
-"Bug Tracker" = "https://github.com/centific-ai/rleaas-sdk/issues"
+Repository = "https://github.com/CentificProduct/rleaas"
 
 [tool.hatch.build.targets.wheel]
 packages = ["rleaas"]

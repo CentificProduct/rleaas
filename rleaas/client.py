@@ -149,13 +149,14 @@ class Client:
         *,
         params: Optional[Dict[str, Any]] = None,
         json: Optional[Any] = None,
+        data: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Execute a request with retry logic; returns parsed JSON."""
         delay = _RETRY_BACKOFF
         last_exc: Exception = RuntimeError("No attempt made")
         for attempt in range(self._retries):
             try:
-                response = self._http.request(method, path, params=params, json=json)
+                response = self._http.request(method, path, params=params, json=json, data=data)
                 _raise_for_status(response)
                 return response.json()
             except (RLEaaSAPIError, AuthenticationError, QuotaExceededError,
@@ -176,8 +177,8 @@ class Client:
     def get(self, path: str, *, params: Optional[Dict[str, Any]] = None) -> Any:
         return self._request("GET", path, params=params)
 
-    def post(self, path: str, *, json: Optional[Any] = None, params: Optional[Dict[str, Any]] = None) -> Any:
-        return self._request("POST", path, json=json, params=params)
+    def post(self, path: str, *, json: Optional[Any] = None, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Any:
+        return self._request("POST", path, json=json, data=data, params=params)
 
     def put(self, path: str, *, json: Optional[Any] = None) -> Any:
         return self._request("PUT", path, json=json)

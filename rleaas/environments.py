@@ -156,7 +156,7 @@ class EnvironmentResource:
             raise ValueError(
                 "Pass confirm=True to permanently delete this environment and all its data."
             )
-        return self._client.delete(f"/api/environments/{self.name}")
+        return self._client.delete(f"/api/custom-environments/{self.name}")
 
     # ------------------------------------------------------------------
     # Tools
@@ -201,7 +201,7 @@ class EnvironmentResource:
         if approval_mode:
             payload["approval_mode"] = approval_mode
         return self._client.put(
-            f"/api/environments/{self.name}/tools", json=payload
+            f"/api/custom-environments/{self.name}", json=payload
         )
 
     # ------------------------------------------------------------------
@@ -342,9 +342,13 @@ class EnvironmentsClient:
     def create(
         self,
         name: str,
+        description: str,
+        tools: List[Dict[str, Any]],
+        scenarios: List[Dict[str, Any]],
+        verifiers: List[str],
+        simulations: List[str],
         vertical: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        description: str = "",
         owner: str = "",
         sdk: str = "gradio",
         compute: str = "cpu-basic",
@@ -357,14 +361,22 @@ class EnvironmentsClient:
         ----------
         name:
             Unique identifier (alphanumeric, hyphens, underscores).
+        description:
+            Short human-readable description (max 200 chars). Required.
+        tools:
+            List of tool definition dicts (id, name, method, resource, description). Required.
+        scenarios:
+            List of scenario dicts defining training tasks. Required.
+        verifiers:
+            List of verifier IDs to attach to this environment. Required.
+        simulations:
+            List of simulation identifiers for this environment. Required.
         vertical:
             Industry vertical: ``"FinSim"`` | ``"MedSim"`` | ``"DevSim"`` |
             ``"ShipSim"`` | ``"PubSim"`` | ``"ShopSim"``.
         config:
             Vertical-specific config: ``org_size``, ``complexity_ceiling``,
             ``regulatory_jurisdiction``, ``departments``, ``data_version``.
-        description:
-            Short human-readable description (max 200 chars).
         owner:
             Owner identifier string.
         sdk:
@@ -380,6 +392,14 @@ class EnvironmentsClient:
 
             env = client.Environment.create(
                 name="FinSim-Production-Training-v1",
+                description="Production FinSim environment for AML training",
+                tools=[
+                    {"id": "ck_get_balance", "name": "get_account_balance", "method": "GET", "resource": "Account", "description": "Fetch account balance."},
+                    {"id": "ck_run_aml",     "name": "run_aml_check",       "method": "POST","resource": "AML",     "description": "Run AML compliance check."},
+                ],
+                scenarios=[{"name": "Wire Transfer AML", "tier": 2, "max_steps": 15}],
+                verifiers=["verif_rule_aml_check"],
+                simulations=["finsim-wire-transfer-v1"],
                 vertical="FinSim",
                 config={
                     "org_size": "large",
@@ -394,6 +414,10 @@ class EnvironmentsClient:
         payload: Dict[str, Any] = {
             "name": name,
             "description": description,
+            "tools": tools,
+            "scenarios": scenarios,
+            "verifiers": verifiers,
+            "simulations": simulations,
             "owner": owner,
             "sdk": sdk,
             "compute": compute,

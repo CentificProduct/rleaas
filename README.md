@@ -100,6 +100,30 @@ report = eval_job.wait_until_complete()
 print(report["overall_score"])
 ```
 
+## Examples
+
+Clone or download the `examples/` folder and run them in order:
+
+| File | What it shows |
+|---|---|
+| `examples/quickstart.py` | Connect, ping, list environments and tools |
+| `examples/create_environment.py` | Create env → verifier → scenarios → suites |
+| `examples/verifiers.py` | All 4 verifier types (rule, trajectory, LLM, composite) |
+| `examples/train_agent.py` | Launch GRPO training, monitor progress, get best checkpoint |
+| `examples/evaluate_agent.py` | Run evaluation, compare rollouts, export audit report |
+
+```bash
+# Install the SDK
+pip install rleaas
+
+# Run examples against a local server
+python examples/quickstart.py
+python examples/create_environment.py
+python examples/verifiers.py
+python examples/train_agent.py
+python examples/evaluate_agent.py
+```
+
 ## Async support
 
 ```python

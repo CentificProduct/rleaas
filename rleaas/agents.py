@@ -25,6 +25,7 @@ Example::
 
 from __future__ import annotations
 
+import json as _json
 import uuid
 from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
 
@@ -172,23 +173,27 @@ class AgentsClient:
             print(agent.id)
         """
         agent_id = f"agent_{uuid.uuid4().hex[:8]}"
-        payload: Dict[str, Any] = {
+        form: Dict[str, Any] = {
             "id": agent_id,
             "name": name,
             "base_model": base_model or model_ref or "",
-            "trainable": trainable,
-            "compatible_categories": compatible_categories or [],
+            "trainable": "true" if trainable else "false",
+            "compatible_categories": _json.dumps(compatible_categories or []),
         }
-        if model_ref:
-            payload["model_ref"] = model_ref
-        if framework:
-            payload["framework"] = framework
-        if tool_permissions is not None:
-            payload["tool_permissions"] = tool_permissions
 
-        data = self._client.post("/api/agents", json=payload)
+        data = self._client.post("/api/agents", data=form)
         # Server may echo back the registered object or just a status dict
         if not isinstance(data, dict) or "id" not in data:
+            payload = {
+                "id": agent_id,
+                "name": name,
+                "base_model": base_model or model_ref or "",
+                "trainable": trainable,
+                "compatible_categories": compatible_categories or [],
+                "model_ref": model_ref,
+                "framework": framework,
+                "tool_permissions": tool_permissions,
+            }
             data = {**payload, **(data or {})}
         return AgentResource(data, self._client)
 
@@ -213,6 +218,25 @@ class AgentsClient:
         data = self._client.get("/api/agents")
         items: List[Dict[str, Any]] = data if isinstance(data, list) else []
         return [AgentResource(item, self._client) for item in items]
+
+    def delete(self, agent_id: str) -> Dict[str, Any]:
+        """Delete a registered agent by ID.
+
+        Parameters
+        ----------
+        agent_id:
+            The agent ID to delete (e.g. ``"agent_q1w2e3r4"``).
+
+        Returns
+        -------
+        dict
+            ``{"deleted": True, "agent_id": "..."}``
+
+        Example::
+
+            client.Agent.delete("agent_q1w2e3r4")
+        """
+        return self._client.delete(f"/api/agents/{agent_id}")
 
     def export(
         self,
