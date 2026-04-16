@@ -21,6 +21,7 @@ from rleaas.scenarios import ScenarioClient, ScenarioSuiteClient
 from rleaas.evaluation import EvaluationClient, EvaluationJobResource
 from rleaas.metrics import MetricsClient
 from rleaas.audit import AuditLogClient
+from rleaas.keys import KeysClient
 from rleaas.exceptions import (
     RLEaaSError,
     RLEaaSAPIError,
@@ -84,6 +85,7 @@ __all__ = [
     "EvaluationJobResource",
     "MetricsClient",
     "AuditLogClient",
+    "KeysClient",
     # exceptions
     "RLEaaSError",
     "RLEaaSAPIError",

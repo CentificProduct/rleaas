@@ -46,6 +46,7 @@ from rleaas.scenarios import ScenarioClient, ScenarioSuiteClient
 from rleaas.evaluation import EvaluationClient
 from rleaas.metrics import MetricsClient
 from rleaas.audit import AuditLogClient
+from rleaas.keys import KeysClient
 
 _DEFAULT_BASE_URL = "http://localhost:8000"
 _DEFAULT_TIMEOUT = 30.0   # seconds
@@ -131,6 +132,7 @@ class Client:
         self.Evaluation = EvaluationClient(self)
         self.Metrics = MetricsClient(self)
         self.AuditLog = AuditLogClient(self)
+        self.Keys = KeysClient(self)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -257,6 +259,7 @@ class AsyncClient:
         self.Evaluation = EvaluationClient(self)        # type: ignore[assignment]
         self.Metrics = MetricsClient(self)              # type: ignore[assignment]
         self.AuditLog = AuditLogClient(self)            # type: ignore[assignment]
+        self.Keys = KeysClient(self)                    # type: ignore[assignment]
 
     def _build_headers(self) -> Dict[str, str]:
         headers: Dict[str, str] = {"Accept": "application/json"}
