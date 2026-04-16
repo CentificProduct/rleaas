@@ -137,6 +137,92 @@ class EnvironmentResource:
             self._client.put(f"/api/environments/{self.name}", json=payload)
         return self._refresh()
 
+    def deploy(
+        self,
+        infrastructure: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Provision the cloud infrastructure cluster for this environment.
+
+        Calls ``POST /api/deployments`` with the provider-specific settings
+        flattened into the payload the API expects.
+
+        Parameters
+        ----------
+        infrastructure:
+            Cloud infrastructure config dict (provider, region, azure/aws/gcp
+            sub-dicts, k8s sub-dict).  If omitted, uses the ``infrastructure``
+            config stored on this resource at creation time.
+
+        Example::
+
+            env.deploy()                    # use config baked in at create()
+            env.deploy(infrastructure={     # or supply/override at call time
+                "provider": "AWS",
+                "region": "us-east-1",
+                "aws": {
+                    "account_id": "123456789012",
+                    "cluster_name": "my-eks-cluster",
+                    "instance_type": "m5.xlarge",
+                    "node_count": 3,
+                    "network_plugin": "amazon-vpc-cni",
+                },
+                "k8s": {"k8s_version": "1.32", "namespace": "default",
+                        "min_replicas": 1, "max_replicas": 5, "autoscaler": "HPA"},
+            })
+        """
+        infra = infrastructure or self._data.get("infrastructure") or {}
+        provider = infra.get("provider", "")
+        region = infra.get("region", "")
+        k8s = infra.get("k8s", {})
+
+        payload: Dict[str, Any] = {
+            "env_name": self.name,
+            "provider": provider,
+            "region": region,
+            "k8s_version": k8s.get("k8s_version", ""),
+            "namespace": k8s.get("namespace", "default"),
+            "min_replicas": k8s.get("min_replicas", 1),
+            "max_replicas": k8s.get("max_replicas", 5),
+            "scaling": k8s.get("autoscaler", "HPA"),
+        }
+
+        if provider == "Azure":
+            azure = infra.get("azure", {})
+            payload.update({
+                "subscription_id": azure.get("subscription_id", ""),
+                "resource_group": azure.get("resource_group", ""),
+                "cluster_name": azure.get("cluster_name", ""),
+                "cluster_label": azure.get("cluster_label", ""),
+                "node_pool_name": azure.get("node_pool_name", ""),
+                "vm_size": azure.get("vm_size", ""),
+                "node_count": azure.get("node_count", 2),
+                "network_plugin": azure.get("network_plugin", ""),
+            })
+        elif provider == "AWS":
+            aws = infra.get("aws", {})
+            payload.update({
+                "account_id": aws.get("account_id", ""),
+                "cluster_name": aws.get("cluster_name", ""),
+                "cluster_label": aws.get("cluster_label", ""),
+                "node_group_name": aws.get("node_group_name", ""),
+                "instance_type": aws.get("instance_type", ""),
+                "node_count": aws.get("node_count", 2),
+                "network_plugin": aws.get("network_plugin", ""),
+            })
+        elif provider == "GCP":
+            gcp = infra.get("gcp", {})
+            payload.update({
+                "project_id": gcp.get("project_id", ""),
+                "cluster_name": gcp.get("cluster_name", ""),
+                "cluster_label": gcp.get("cluster_label", ""),
+                "node_pool_name": gcp.get("node_pool_name", ""),
+                "machine_type": gcp.get("machine_type", ""),
+                "node_count": gcp.get("node_count", 2),
+                "network_plugin": gcp.get("network_plugin", ""),
+            })
+
+        return self._client.post("/api/deployments", json=payload)
+
     def deprovision(self) -> Dict[str, Any]:
         """Release compute resources.
 
@@ -354,6 +440,7 @@ class EnvironmentsClient:
         compute: str = "cpu-basic",
         license: str = "",
         tags: Optional[List[str]] = None,
+        infrastructure: Optional[Dict[str, Any]] = None,
     ) -> EnvironmentResource:
         """Provision a new synthetic enterprise environment.
 
@@ -387,6 +474,15 @@ class EnvironmentsClient:
             License identifier (e.g. ``"apache-2.0"``).
         tags:
             Searchable tags for organizing environments.
+        infrastructure:
+            Cloud infrastructure config for cluster provisioning.  Mirrors the
+            UI's infrastructure selection (Step 2 – Infrastructure).  Structured
+            as a nested dict with a ``provider`` key (``"Azure"`` | ``"AWS"`` |
+            ``"GCP"`` | ``"On-Premise"``), a ``region`` key, a provider-specific
+            sub-dict (``azure`` / ``aws`` / ``gcp``) with cluster/node settings,
+            and a ``k8s`` sub-dict with Kubernetes settings.  Call
+            :meth:`~EnvironmentResource.deploy` afterwards to actually provision
+            the cluster.
 
         Example::
 
@@ -430,6 +526,8 @@ class EnvironmentsClient:
             payload["config"] = config
         if tags:
             payload["tags"] = tags
+        if infrastructure:
+            payload["infrastructure"] = infrastructure
 
         data = self._client.post("/api/custom-environments", json=payload)
         # Server may return just a status dict; seed name so the resource is usable
