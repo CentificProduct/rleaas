@@ -101,6 +101,45 @@ class AgentResource:
             result["_download_to"] = download_to
         return result
 
+    def configure(self, **config: Any) -> Dict[str, Any]:
+        """Update this agent's runtime/training configuration."""
+        return self._client.put(f"/api/agents/{self.id}/configure", json=config)
+
+    def list_versions(self) -> List[Dict[str, Any]]:
+        """Return version history snapshots for this agent."""
+        data = self._client.get(f"/api/agents/{self.id}/versions")
+        return data if isinstance(data, list) else []
+
+    def rollback(self, version: str) -> Dict[str, Any]:
+        """Rollback this agent to a prior version tag (e.g. ``v2``)."""
+        return self._client.post(
+            f"/api/agents/{self.id}/rollback",
+            json={"version": version},
+        )
+
+    def validate(self) -> Dict[str, Any]:
+        """Validate the interface contract for this agent."""
+        return self._client.post(f"/api/agents/{self.id}/validate")
+
+    def dry_run(self, environment_id: str, episodes: int = 5) -> Dict[str, Any]:
+        """Run a dry-run evaluation for this agent."""
+        return self._client.post(
+            f"/api/agents/{self.id}/dry-run",
+            json={"environment_id": environment_id, "episodes": episodes},
+        )
+
+    def list_dry_runs(self) -> List[Dict[str, Any]]:
+        """List recent dry-run results for this agent."""
+        data = self._client.get(f"/api/agents/{self.id}/dry-runs")
+        return data if isinstance(data, list) else []
+
+    def deploy(self, environment_id: str, label: Optional[str] = None) -> Dict[str, Any]:
+        """Deploy this agent to an environment."""
+        payload: Dict[str, Any] = {"environment_id": environment_id}
+        if label:
+            payload["label"] = label
+        return self._client.post(f"/api/agents/{self.id}/deploy", json=payload)
+
     def __repr__(self) -> str:
         return (
             f"<AgentResource id={self.id!r} name={self.name!r} "
@@ -237,6 +276,45 @@ class AgentsClient:
             client.Agent.delete("agent_q1w2e3r4")
         """
         return self._client.delete(f"/api/agents/{agent_id}")
+
+    def configure(self, agent_id: str, **config: Any) -> Dict[str, Any]:
+        """Update an agent's runtime/training configuration."""
+        return self._client.put(f"/api/agents/{agent_id}/configure", json=config)
+
+    def list_versions(self, agent_id: str) -> List[Dict[str, Any]]:
+        """Return version history snapshots for an agent."""
+        data = self._client.get(f"/api/agents/{agent_id}/versions")
+        return data if isinstance(data, list) else []
+
+    def rollback(self, agent_id: str, version: str) -> Dict[str, Any]:
+        """Rollback an agent to a prior version tag (e.g. ``v2``)."""
+        return self._client.post(
+            f"/api/agents/{agent_id}/rollback",
+            json={"version": version},
+        )
+
+    def validate(self, agent_id: str) -> Dict[str, Any]:
+        """Validate an agent's interface contract."""
+        return self._client.post(f"/api/agents/{agent_id}/validate")
+
+    def dry_run(self, agent_id: str, environment_id: str, episodes: int = 5) -> Dict[str, Any]:
+        """Run a dry-run evaluation for an agent."""
+        return self._client.post(
+            f"/api/agents/{agent_id}/dry-run",
+            json={"environment_id": environment_id, "episodes": episodes},
+        )
+
+    def list_dry_runs(self, agent_id: str) -> List[Dict[str, Any]]:
+        """List recent dry-run results for an agent."""
+        data = self._client.get(f"/api/agents/{agent_id}/dry-runs")
+        return data if isinstance(data, list) else []
+
+    def deploy(self, agent_id: str, environment_id: str, label: Optional[str] = None) -> Dict[str, Any]:
+        """Deploy an agent to an environment."""
+        payload: Dict[str, Any] = {"environment_id": environment_id}
+        if label:
+            payload["label"] = label
+        return self._client.post(f"/api/agents/{agent_id}/deploy", json=payload)
 
     def export(
         self,
