@@ -22,6 +22,8 @@ from rleaas.evaluation import EvaluationClient, EvaluationJobResource
 from rleaas.metrics import MetricsClient
 from rleaas.audit import AuditLogClient
 from rleaas.keys import KeysClient
+from rleaas.profile import ProfileClient
+from rleaas.deployments import DeploymentsClient
 from rleaas.exceptions import (
     RLEaaSError,
     RLEaaSAPIError,
@@ -86,6 +88,8 @@ __all__ = [
     "MetricsClient",
     "AuditLogClient",
     "KeysClient",
+    "ProfileClient",
+    "DeploymentsClient",
     # exceptions
     "RLEaaSError",
     "RLEaaSAPIError",
