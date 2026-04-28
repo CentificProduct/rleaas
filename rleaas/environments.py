@@ -535,6 +535,46 @@ class EnvironmentsClient:
             data["name"] = name
         return EnvironmentResource(data, self._client)
 
+    def register_environment(
+        self,
+        name: str,
+        description: str,
+        tools: List[Dict[str, Any]],
+        scenarios: List[Dict[str, Any]],
+        verifiers: List[str],
+        simulations: List[str],
+        vertical: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        owner: str = "",
+        sdk: str = "gradio",
+        compute: str = "cpu-basic",
+        license: str = "",
+        tags: Optional[List[str]] = None,
+        infrastructure: Optional[Dict[str, Any]] = None,
+    ) -> EnvironmentResource:
+        """Backward-compatible alias for :meth:`create`.
+
+        Some SDK checklists and integrations refer to this flow as
+        ``register_environment()``. The implementation is intentionally
+        delegated to :meth:`create` to preserve existing behavior.
+        """
+        return self.create(
+            name=name,
+            description=description,
+            tools=tools,
+            scenarios=scenarios,
+            verifiers=verifiers,
+            simulations=simulations,
+            vertical=vertical,
+            config=config,
+            owner=owner,
+            sdk=sdk,
+            compute=compute,
+            license=license,
+            tags=tags,
+            infrastructure=infrastructure,
+        )
+
     def get(self, identifier: str) -> EnvironmentResource:
         """Retrieve a single environment by name or numeric ID.
 
@@ -552,6 +592,9 @@ class EnvironmentsClient:
         status: Optional[str] = None,
         vertical: Optional[str] = None,
         category: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        cursor: Optional[str] = None,
     ) -> List[EnvironmentResource]:
         """List all environments with optional filters.
 
@@ -563,6 +606,12 @@ class EnvironmentsClient:
             Filter by vertical/category, e.g. ``"FinSim"``.
         category:
             Alias for *vertical*.
+        limit:
+            Maximum environments returned in one call.
+        offset:
+            Number of environments to skip before collecting results.
+        cursor:
+            Cursor token for cursor-based pagination backends.
 
         Example::
 
@@ -576,6 +625,12 @@ class EnvironmentsClient:
         cat = vertical or category
         if cat:
             params["category"] = cat
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if cursor is not None:
+            params["cursor"] = cursor
 
         data = self._client.get("/api/environments", params=params or None)
         items: List[Dict[str, Any]] = (

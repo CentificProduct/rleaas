@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 TrainingStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
-TrainingAlgorithm = Literal["PPO", "DQN", "A2C", "GRPO"]
+TrainingAlgorithm = Literal["PPO", "SAC", "DQN", "A2C", "GRPO", "A3C", "TD3", "DDPG", "SLM"]
 
 
 class TrainingRequest(BaseModel):

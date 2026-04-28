@@ -100,6 +100,128 @@ report = eval_job.wait_until_complete()
 print(report["overall_score"])
 ```
 
+### Training + Simulation configuration
+
+Use this simple flow:
+
+1. Put training settings in your `config.json` under `training` as an array of entries.
+2. Run `python -m rleaas.training_cli` commands to start and manage jobs.
+
+Quick helper option:
+
+```bash
+python -m rleaas.training_cli start
+# status / rerun / operations:
+python -m rleaas.training_cli status --job-id <job_id>
+Eg: 
+python -m rleaas.training_cli status --job-id train_8f3a2b1c
+python -m rleaas.training_cli list
+python -m rleaas.training_cli list --ids-only
+python -m rleaas.training_cli wait --job-id <job_id>
+python -m rleaas.training_cli metrics --job-id <job_id>
+python -m rleaas.training_cli checkpoints --job-id <job_id>
+python -m rleaas.training_cli rollouts --job-id <job_id>
+python -m rleaas.training_cli cancel --job-id <job_id>
+
+# if config has multiple training entries:
+python -m rleaas.training_cli start --training 3
+python -m rleaas.training_cli start --training 3,4,5
+python -m rleaas.training_cli start --all
+```
+### `config.json` training schema
+
+Place training config under top-level `training` key in `config.json` using this format only:
+- `"training": [ { ... }, { ... } ]`
+- each entry must include a `training` identifier (for example: `1`, `2`, `3`)
+
+- `training` (required, integer/string): run identifier (`1`, `2`, `3`, etc.).
+- `environment_name` (required, string): target environment name to train.
+- `name` (optional, string): run name shown in training history/UI.
+- `description` (optional, string): objective/notes for the run.
+- `agent_id` (optional, string): agent/model id to use for training.
+- `scenario_id` (optional, string): scenario/suite id for the run.
+- `verifier_ids` (optional, array of strings): verifier ids to evaluate rewards/scoring.
+- `algorithm` (optional, string, default `PPO`): one of `GRPO`, `PPO`, `SAC`, `DQN`, `A2C`, `A3C`, `TD3`, `DDPG`, `SLM`.
+- `max_steps` (optional, integer, default `200` in README flow): max steps per episode.
+- `episodes` (optional, integer, default `100` in README flow): number of episodes.
+- `reward_fn` (optional): reward function reference in one of these formats:
+  - string: `"rewards/finsim_reward.py"` or inline expression/function string
+  - object path form: `{ "path": "rewards/finsim_reward.py" }`
+  - object inline form: `{ "inline": "reward = ..." }`
+- `simulation` (optional, object):
+  - `speed` (optional, positive number)
+  - `seed` (optional, non-negative integer)
+  - `episode_settings` (optional, object):
+    - `num_episodes` (optional, positive integer)
+    - `max_steps` (optional, positive integer)
+- `config` (optional, object): additional backend config, for example `learning_rate`, `batch_size`, `checkpoint_interval`.
+
+Example:
+
+```json
+{
+  "training": [
+    
+    {
+      "training": 1,
+      "name": "finsim-ppo-run-007",
+      "description": "PPO training run for FinSim baseline.",
+      "environment_name": "Demo-FinSim-Env-aks-Demo",
+      "agent_id": "",
+      "scenario_id": "",
+      "verifier_ids": [],
+      "algorithm": "PPO",
+      "max_steps": 200,
+      "episodes": 500,
+      "reward_fn": {
+        "path": "rewards/finsim_reward.py"
+      },
+      "simulation": {
+        "speed": 1.5,
+        "seed": 42,
+        "episode_settings": {
+          "num_episodes": 500,
+          "max_steps": 200
+        }
+      },
+      "config": {
+        "learning_rate": 0.0003,
+        "batch_size": 128,
+        "checkpoint_interval": 100
+      }
+    },
+    {
+      "training": 2,
+      "name": "finsim-ppo-run-008",
+      "description": "PPO training run for FinSim baseline.",
+      "environment_name": "Demo-FinSim-Env-aks-Demo",
+      "agent_id": "",
+      "scenario_id": "",
+      "verifier_ids": [],
+      "algorithm": "PPO",
+      "max_steps": 200,
+      "episodes": 500,
+      "reward_fn": {
+        "path": "rewards/finsim_reward.py"
+      },
+      "simulation": {
+        "speed": 1.5,
+        "seed": 43,
+        "episode_settings": {
+          "num_episodes": 500,
+          "max_steps": 200
+        }
+      },
+      "config": {
+        "learning_rate": 0.0003,
+        "batch_size": 128,
+        "checkpoint_interval": 100
+      }
+    }
+  ]
+}
+```
+
 ## Examples
 
 Clone or download the `examples/` folder and run them in order:

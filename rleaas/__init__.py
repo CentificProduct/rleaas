@@ -14,7 +14,6 @@ Quick start::
 from rleaas.client import Client, AsyncClient
 from rleaas.environments import EnvironmentsClient, EnvironmentResource
 from rleaas.tools import ToolsClient
-from rleaas.training import TrainingClient, TrainingJobResource
 from rleaas.agents import AgentsClient, AgentResource
 from rleaas.verifiers import VerifierClient, VerifierResource
 from rleaas.scenarios import ScenarioClient, ScenarioSuiteClient
@@ -66,6 +65,19 @@ from rleaas.models import (
 )
 
 __version__ = "1.0.1"
+
+
+def __getattr__(name: str):
+    # Avoid importing rleaas.training at package import time so
+    # `python -m rleaas.training ...` does not emit runtime warnings.
+    if name in {"TrainingClient", "TrainingJobResource"}:
+        from rleaas.training import TrainingClient, TrainingJobResource
+
+        return {
+            "TrainingClient": TrainingClient,
+            "TrainingJobResource": TrainingJobResource,
+        }[name]
+    raise AttributeError(f"module 'rleaas' has no attribute {name!r}")
 
 __all__ = [
     # clients

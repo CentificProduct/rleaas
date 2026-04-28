@@ -38,11 +38,27 @@ Example::
 
 from __future__ import annotations
 
+import argparse
+import json
+import os
+import sys
 import time
 from typing import Any, Dict, Iterator, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rleaas.client import Client
+
+SUPPORTED_ALGORITHMS = (
+    "GRPO",
+    "PPO",
+    "SAC",
+    "DQN",
+    "A2C",
+    "A3C",
+    "TD3",
+    "DDPG",
+    "SLM",
+)
 
 
 class TrainingJobResource:
@@ -396,6 +412,124 @@ class TrainingClient:
     def __init__(self, _client: "Client") -> None:
         self._client = _client
 
+    def _normalize_algorithm(self, algorithm: str) -> str:
+        algo = algorithm.strip().upper()
+        if algo not in SUPPORTED_ALGORITHMS:
+            raise ValueError(
+                f"Unsupported algorithm {algorithm!r}. "
+                f"Supported algorithms: {', '.join(SUPPORTED_ALGORITHMS)}."
+            )
+        return algo
+
+    def _validate_positive_int(self, value: Any, field_name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"{field_name} must be a positive integer.")
+        return value
+
+    def _validate_reward_fn(self, reward_fn: Any) -> Any:
+        if isinstance(reward_fn, str):
+            ref = reward_fn.strip()
+            if not ref:
+                raise ValueError("reward_fn cannot be empty.")
+            # Keep scalar string shape for backend pass-through compatibility.
+            return ref
+        if isinstance(reward_fn, dict):
+            has_type_value = (
+                str(reward_fn.get("type", "")).strip() in {"path", "inline"}
+                and str(reward_fn.get("value", "")).strip()
+            )
+            if has_type_value:
+                return {
+                    "type": str(reward_fn["type"]).strip(),
+                    "value": str(reward_fn["value"]).strip(),
+                }
+            has_path = "path" in reward_fn and str(reward_fn.get("path", "")).strip()
+            has_inline = "inline" in reward_fn and str(reward_fn.get("inline", "")).strip()
+            if has_path and has_inline:
+                raise ValueError("reward_fn must define only one of 'path' or 'inline'.")
+            if has_path:
+                return {"path": str(reward_fn["path"]).strip()}
+            if has_inline:
+                return {"inline": str(reward_fn["inline"]).strip()}
+        raise ValueError(
+            "reward_fn must be a non-empty string path/inline expression, "
+            "or a dict with exactly one of {'path', 'inline'}."
+        )
+
+    def _validate_simulation(self, simulation: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(simulation, dict):
+            raise ValueError("simulation must be a dict when provided.")
+        validated: Dict[str, Any] = {}
+        if "speed" in simulation:
+            speed = simulation["speed"]
+            if isinstance(speed, bool) or not isinstance(speed, (int, float)) or speed <= 0:
+                raise ValueError("simulation.speed must be a positive number.")
+            validated["speed"] = speed
+        if "seed" in simulation:
+            seed = simulation["seed"]
+            if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+                raise ValueError("simulation.seed must be a non-negative integer.")
+            validated["seed"] = seed
+        if "episode_settings" in simulation:
+            eps = simulation["episode_settings"]
+            if not isinstance(eps, dict):
+                raise ValueError("simulation.episode_settings must be a dict.")
+            eps_validated: Dict[str, Any] = {}
+            if "num_episodes" in eps:
+                eps_validated["num_episodes"] = self._validate_positive_int(
+                    eps["num_episodes"], "simulation.episode_settings.num_episodes"
+                )
+            if "max_steps" in eps:
+                eps_validated["max_steps"] = self._validate_positive_int(
+                    eps["max_steps"], "simulation.episode_settings.max_steps"
+                )
+            validated["episode_settings"] = eps_validated or eps
+        unknown_keys = set(simulation.keys()) - {"speed", "seed", "episode_settings"}
+        for key in unknown_keys:
+            validated[key] = simulation[key]
+        return validated
+
+    def configure_training(
+        self,
+        algorithm: str = "GRPO",
+        max_steps: int = 1000,
+        reward_fn: Optional[Any] = None,
+        simulation: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Build and validate a training configuration before submitting jobs.
+
+        Parameters
+        ----------
+        algorithm:
+            RL algorithm name. Supported: ``GRPO``, ``PPO``, ``SAC``, ``DQN``, ``A2C``.
+        max_steps:
+            Max steps per episode. Must be a positive integer.
+        reward_fn:
+            Reward function reference. Supports:
+            - file path string (example: ``"rewards/finsim_reward.py"``),
+            - inline expression/function string,
+            - dict with exactly one of ``{"path": ...}`` or ``{"inline": ...}``.
+        simulation:
+            Simulation runtime properties dict. Supported keys:
+            ``speed``, ``seed``, and ``episode_settings``.
+        config:
+            Additional training config keys to merge (learning_rate, batch_size, etc.).
+
+        Returns
+        -------
+        dict
+            Validated config payload safe to pass to :meth:`run`.
+        """
+        validated: Dict[str, Any] = dict(config or {})
+        validated["algorithm"] = self._normalize_algorithm(algorithm)
+        validated["max_steps"] = self._validate_positive_int(max_steps, "max_steps")
+        if reward_fn is not None:
+            validated["reward_fn"] = self._validate_reward_fn(reward_fn)
+        if simulation is not None:
+            validated["simulation"] = self._validate_simulation(simulation)
+        return validated
+
     def run(
         self,
         environment_name: Optional[str] = None,
@@ -423,11 +557,11 @@ class TrainingClient:
         scenario_suite_id:
             Scenario suite to train on.
         algorithm:
-            RL algorithm: ``"GRPO"`` (default) | ``"PPO"`` | ``"DQN"`` | ``"A2C"``.
+            RL algorithm: ``"GRPO"`` (default) | ``"PPO"`` | ``"SAC"`` | ``"DQN"`` | ``"A2C"``.
         config:
             Training hyperparameters: ``episodes``, ``max_steps_per_episode``,
             ``learning_rate``, ``batch_size``, ``checkpoint_interval``,
-            ``curriculum``, ``compute_quota``.
+            ``curriculum``, ``compute_quota``, ``simulation``, ``reward_fn``.
         name:
             Human-readable label for this run.
         verifier_ids:
@@ -463,14 +597,22 @@ class TrainingClient:
             print(job.id)      # job_5e2f8c1a
             print(job.status)  # 'running'
         """
-        cfg = config or {}
+        cfg = dict(config or {})
+        normalized_algo = self._normalize_algorithm(algorithm)
         num_episodes = cfg.pop("episodes", cfg.pop("num_episodes", 100))
         max_steps = cfg.pop("max_steps_per_episode", cfg.pop("max_steps", 1000))
+        num_episodes = self._validate_positive_int(num_episodes, "episodes")
+        max_steps = self._validate_positive_int(max_steps, "max_steps")
+
+        if "reward_fn" in cfg:
+            cfg["reward_fn"] = self._validate_reward_fn(cfg["reward_fn"])
+        if "simulation" in cfg:
+            cfg["simulation"] = self._validate_simulation(cfg["simulation"])
 
         env_name = environment_name or (str(env_id) if env_id else "default")
 
         payload: Dict[str, Any] = {
-            "algorithm": algorithm,
+            "algorithm": normalized_algo,
             "num_episodes": num_episodes,
             "max_steps": max_steps,
             "config": cfg,
@@ -522,3 +664,306 @@ class TrainingClient:
             client.TrainingJob.cancel("job_5e2f8c1a")
         """
         return self._client.post(f"/api/training/jobs/{job_id}/cancel")
+
+
+def _cli_load_json(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _cli_build_client(args: argparse.Namespace) -> "Client":
+    # Local import avoids circular import at module load time.
+    from rleaas.client import Client
+
+    cfg = _cli_load_json(args.config)
+    api_key = args.api_key or os.environ.get("RLEAAS_API_KEY") or cfg.get("api_key")
+    base_url = (args.base_url or cfg.get("base_url", "http://localhost:8000")).rstrip("/")
+    if not api_key:
+        print(
+            "ERROR: No API key provided.\n"
+            "Pass --api-key, set RLEAAS_API_KEY, or set api_key in config.json."
+        )
+        sys.exit(1)
+    return Client(api_key=api_key, base_url=base_url)
+
+
+def _cli_resolve_training_entries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw = cfg.get("training")
+    if not isinstance(raw, list) or not all(isinstance(item, dict) for item in raw):
+        raise ValueError(
+            "Invalid training config. Expected: \"training\": [ { ... }, { ... } ]."
+        )
+    if len(raw) == 0:
+        raise ValueError("No training entries found in config.")
+    missing = [i for i, item in enumerate(raw) if "training" not in item]
+    if missing:
+        raise ValueError(
+            f"Each training entry must include 'training' identifier. Missing at indexes: {missing}."
+        )
+    return raw
+
+
+def _cli_start_one(training: Dict[str, Any], client: "Client", idx: int | None = None) -> None:
+    if "environment_name" not in training:
+        raise ValueError("Each training entry must include 'environment_name'.")
+
+    merged_cfg = dict(training.get("config", {}))
+    merged_cfg["episodes"] = training.get("episodes", 100)
+    if training.get("description"):
+        merged_cfg["description"] = training.get("description")
+
+    training_cfg = client.TrainingJob.configure_training(
+        algorithm=training.get("algorithm", "PPO"),
+        max_steps=training.get("max_steps", 200),
+        reward_fn=training.get("reward_fn"),
+        simulation=training.get("simulation"),
+        config=merged_cfg,
+    )
+
+    job = client.TrainingJob.run(
+        environment_name=training["environment_name"],
+        agent_id=training.get("agent_id"),
+        scenario_suite_id=training.get("scenario_id"),
+        algorithm=training_cfg["algorithm"],
+        config=training_cfg,
+        name=training.get("name"),
+        verifier_ids=training.get("verifier_ids"),
+    )
+
+    training_id = training.get("training")
+    prefix = f"[training={training_id} idx={idx}] " if idx is not None else f"[training={training_id}] "
+    print(f"{prefix}Training started")
+    print(f"job_id: {job.id}")
+    print(f"status: {job.status}")
+    print(f"environment: {job.environment_name}")
+    print(f"algorithm: {job.algorithm or training_cfg['algorithm']}")
+
+
+def _parse_training_ids(value: Any) -> List[str]:
+    if value is None:
+        return []
+    raw = str(value).strip()
+    if not raw:
+        raise ValueError("--training cannot be empty.")
+    ids = [part.strip() for part in raw.split(",")]
+    if any(not item for item in ids):
+        raise ValueError("Invalid --training value. Use comma-separated ids like --training 3,4,5.")
+    return ids
+
+
+def cli_main() -> None:
+    parser = argparse.ArgumentParser(description="Training CLI for config.json + SDK")
+    parser.add_argument(
+        "--config",
+        default="config.json",
+        help="Path to config JSON (default: config.json)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key override (defaults to env var or config.json)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Base URL override (defaults to config.json value)",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_start = sub.add_parser("start", help="Start training job(s) from config.json settings")
+    p_start.add_argument(
+        "--training",
+        dest="training_id",
+        default=None,
+        help="Run one/more entries by `training` identifier (e.g. --training 3 or --training 3,4,5)",
+    )
+    p_start.add_argument(
+        "--index",
+        type=int,
+        default=None,
+        help="Run only one training entry by 0-based index when training is a list",
+    )
+    p_start.add_argument(
+        "--all",
+        action="store_true",
+        help="Run all training entries when training is a list",
+    )
+
+    p_status = sub.add_parser("status", help="Show status for a specific training job")
+    p_status.add_argument("--job-id", required=True, help="Training job id")
+
+    p_list = sub.add_parser("list", help="List all training jobs")
+    p_list.add_argument(
+        "--ids-only",
+        action="store_true",
+        help="Print only job IDs (one per line)",
+    )
+
+    p_cancel = sub.add_parser("cancel", help="Cancel a specific training job")
+    p_cancel.add_argument("--job-id", required=True, help="Training job id")
+
+    p_wait = sub.add_parser("wait", help="Wait for a specific training job to complete")
+    p_wait.add_argument("--job-id", required=True, help="Training job id")
+    p_wait.add_argument("--timeout", type=float, default=86400, help="Wait timeout in seconds")
+    p_wait.add_argument(
+        "--poll-interval",
+        type=float,
+        default=30.0,
+        help="Polling interval in seconds",
+    )
+
+    p_metrics = sub.add_parser("metrics", help="Show current metrics for a training job")
+    p_metrics.add_argument("--job-id", required=True, help="Training job id")
+
+    p_checkpoints = sub.add_parser("checkpoints", help="List checkpoints for a job")
+    p_checkpoints.add_argument("--job-id", required=True, help="Training job id")
+
+    p_rollouts = sub.add_parser("rollouts", help="List rollouts for a job")
+    p_rollouts.add_argument("--job-id", required=True, help="Training job id")
+
+    args = parser.parse_args()
+    if args.command == "start":
+        selectors = [
+            bool(args.all),
+            args.index is not None,
+            args.training_id is not None,
+        ]
+        if sum(selectors) > 1:
+            print("ERROR: Use only one selector: --all OR --index OR --training.")
+            sys.exit(1)
+
+    client = _cli_build_client(args)
+    try:
+        try:
+            if args.command == "start":
+                cfg = _cli_load_json(args.config)
+                entries = _cli_resolve_training_entries(cfg)
+                if args.training_id is not None:
+                    requested_ids = _parse_training_ids(args.training_id)
+                    entry_by_training: Dict[str, Dict[str, Any]] = {}
+                    for entry in entries:
+                        key = str(entry.get("training"))
+                        if key in entry_by_training:
+                            raise ValueError(
+                                f"Duplicate training identifier found in config: training={key!r}. "
+                                "Make training identifiers unique."
+                            )
+                        entry_by_training[key] = entry
+                    for training_id in requested_ids:
+                        if training_id not in entry_by_training:
+                            raise ValueError(f"No training entry found with training={training_id!r}.")
+                        _cli_start_one(entry_by_training[training_id], client)
+                elif args.all:
+                    for i, entry in enumerate(entries):
+                        _cli_start_one(entry, client, idx=i)
+                elif args.index is not None:
+                    if args.index < 0 or args.index >= len(entries):
+                        raise ValueError(f"--index out of range. Expected 0 to {len(entries) - 1}.")
+                    _cli_start_one(entries[args.index], client, idx=args.index if len(entries) > 1 else None)
+                elif len(entries) > 1:
+                    raise ValueError(
+                        "Config contains multiple training entries. Use --index <n> to run one or --all to run all."
+                    )
+                else:
+                    _cli_start_one(entries[0], client)
+            elif args.command == "status":
+                job = client.TrainingJob.get(args.job_id)
+                print(f"job_id: {job.id}")
+                print(f"status: {job.status}")
+                print(f"environment: {job.environment_name}")
+                print(f"progress: {job.progress}")
+                if job.run_name:
+                    print(f"run_name: {job.run_name}")
+                if job.algorithm:
+                    print(f"algorithm: {job.algorithm}")
+            elif args.command == "list":
+                jobs = client.TrainingJob.list()
+                if not jobs:
+                    print("No training jobs found.")
+                else:
+                    if getattr(args, "ids_only", False):
+                        for job in jobs:
+                            print(job.id)
+                    else:
+                        for job in jobs:
+                            print(
+                                f"{job.id} | status={job.status} | env={job.environment_name} "
+                                f"| algorithm={job.algorithm or '-'} | progress={job.progress}"
+                            )
+            elif args.command == "cancel":
+                result = client.TrainingJob.cancel(args.job_id)
+                print(f"Cancel request sent for {args.job_id}")
+                print(result)
+            elif args.command == "wait":
+                job = client.TrainingJob.get(args.job_id)
+                job.wait_until_complete(timeout=args.timeout, poll_interval=args.poll_interval)
+                print(f"job_id: {job.id}")
+                print(f"final_status: {job.status}")
+            elif args.command == "metrics":
+                job = client.TrainingJob.get(args.job_id)
+                print(json.dumps(job.get_metrics(), indent=2))
+            elif args.command == "checkpoints":
+                job = client.TrainingJob.get(args.job_id)
+                checkpoints = job.list_checkpoints()
+                if not checkpoints:
+                    print("No checkpoints found.")
+                else:
+                    print(json.dumps(checkpoints, indent=2))
+            elif args.command == "rollouts":
+                job = client.TrainingJob.get(args.job_id)
+                rollouts = job.list_rollouts()
+                if not rollouts:
+                    print("No rollouts found.")
+                else:
+                    print(json.dumps(rollouts, indent=2))
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            sys.exit(1)
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
+    cli_main()
+
+# Backward-compatible aliases used by existing test helpers.
+_load_json = _cli_load_json
+_resolve_training_entries = _cli_resolve_training_entries
+_start_one = _cli_start_one
+
+
+def _cmd_start(args: argparse.Namespace, client: "Client") -> None:
+    cfg = _load_json(args.config)
+    entries = _resolve_training_entries(cfg)
+    count = len(entries)
+    training_id = getattr(args, "training_id", None)
+    if training_id is not None:
+        requested_ids = _parse_training_ids(training_id)
+        entry_by_training: Dict[str, Dict[str, Any]] = {}
+        for entry in entries:
+            key = str(entry.get("training"))
+            if key in entry_by_training:
+                raise ValueError(
+                    f"Duplicate training identifier found in config: training={key!r}. "
+                    "Make training identifiers unique."
+                )
+            entry_by_training[key] = entry
+        for requested_id in requested_ids:
+            if requested_id not in entry_by_training:
+                raise ValueError(f"No training entry found with training={requested_id!r}.")
+            _start_one(entry_by_training[requested_id], client)
+        return
+    if getattr(args, "all", False):
+        for i, entry in enumerate(entries):
+            _start_one(entry, client, idx=i)
+        return
+    if getattr(args, "index", None) is not None:
+        if args.index < 0 or args.index >= count:
+            raise ValueError(f"--index out of range. Expected 0 to {count - 1}.")
+        _start_one(entries[args.index], client, idx=args.index if count > 1 else None)
+        return
+    if count > 1:
+        raise ValueError(
+            "Config contains multiple training entries. Use --index <n> to run one or --all to run all."
+        )
+    _start_one(entries[0], client)
