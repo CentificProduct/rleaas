@@ -30,6 +30,15 @@ class TrainingJobNotFound(RLEaaSError):
         super().__init__(f"Training job not found: {job_id!r}")
 
 
+class TrainingJobFailed(RLEaaSError):
+    """Raised when a training job reaches a failed terminal state."""
+
+    def __init__(self, job_id: str, detail: str = "") -> None:
+        self.job_id = job_id
+        self.detail = detail or "No failure detail provided by server."
+        super().__init__(f"Training job failed: {job_id!r}. Reason: {self.detail}")
+
+
 class VerifierNotFound(RLEaaSError):
     """Raised when a verifier ID cannot be located."""
 

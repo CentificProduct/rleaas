@@ -31,6 +31,7 @@ from rleaas.exceptions import (
     RateLimitError,
     EnvironmentNotFound,
     TrainingJobNotFound,
+    TrainingJobFailed,
     VerifierNotFound,
 )
 from rleaas.models import (
@@ -110,6 +111,7 @@ __all__ = [
     "RateLimitError",
     "EnvironmentNotFound",
     "TrainingJobNotFound",
+    "TrainingJobFailed",
     "VerifierNotFound",
     # models — environment
     "Environment",

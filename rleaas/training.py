@@ -47,6 +47,7 @@ from typing import Any, Dict, Iterator, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from rleaas.client import Client
+from rleaas.exceptions import TrainingJobFailed
 
 SUPPORTED_ALGORITHMS = (
     "GRPO",
@@ -94,6 +95,24 @@ class TrainingJobResource:
         except Exception:
             pass
         return self
+
+    def _extract_failure_detail(self) -> str:
+        """Build a readable failure message from known server payload shapes."""
+        if not isinstance(self._data, dict):
+            return "No failure detail provided by server."
+        candidates: List[Any] = [
+            self._data.get("error"),
+            self._data.get("detail"),
+            (self._data.get("results") or {}).get("error"),
+            (self._data.get("results") or {}).get("failure_reason"),
+            self._data.get("failure_reason"),
+            self._data.get("message"),
+        ]
+        for value in candidates:
+            text = str(value).strip() if value is not None else ""
+            if text:
+                return text
+        return "No failure detail provided by server."
 
     def get_metrics(self) -> Dict[str, Any]:
         """Return the latest training metrics for this job.
@@ -158,6 +177,8 @@ class TrainingJobResource:
 
         Raises
         ------
+        TrainingJobFailed
+            If the job reaches ``"failed"`` and includes the server error detail.
         TimeoutError
             If the job has not finished within *timeout* seconds.
 
@@ -179,6 +200,8 @@ class TrainingJobResource:
                     on_progress(metrics)
                 except Exception:
                     pass
+            if self.status == "failed":
+                raise TrainingJobFailed(self.id, self._extract_failure_detail())
             if self.status in _terminal:
                 return self
             time.sleep(poll_interval)
@@ -368,6 +391,67 @@ class TrainingJobResource:
             ``{"status": "cancelled", "job_id": ...}``
         """
         return self._client.post(f"/api/training/jobs/{self.id}/cancel")
+
+    def get_logs(self, limit: Optional[int] = None) -> List[str]:
+        """Fetch training logs for this job.
+
+        Returns best-effort log lines using supported backend routes. If logs
+        are unavailable, returns an empty list.
+        """
+        params: Dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        paths = (
+            f"/api/training/jobs/{self.id}/logs",
+            f"/api/training/runs/{self.id}/logs",
+            f"/training/{self.id}/logs",
+        )
+        for path in paths:
+            try:
+                data = self._client.get(path, params=params or None)
+            except Exception:
+                continue
+            if isinstance(data, list):
+                return [str(item) for item in data]
+            if isinstance(data, dict):
+                raw = data.get("logs") or data.get("items") or data.get("lines")
+                if isinstance(raw, list):
+                    return [str(item) for item in raw]
+                if isinstance(raw, str):
+                    return [line for line in raw.splitlines() if line.strip()]
+            if isinstance(data, str):
+                return [line for line in data.splitlines() if line.strip()]
+        return []
+
+    def stream_logs(
+        self,
+        poll_interval: float = 5.0,
+        timeout: float = 86400,
+    ) -> Iterator[str]:
+        """Yield log lines by polling until the run reaches a terminal state."""
+        seen = 0
+        deadline = time.monotonic() + timeout
+        terminal = {"completed", "failed", "cancelled", "awaiting_human_eval"}
+        while time.monotonic() < deadline:
+            logs = self.get_logs()
+            if seen < len(logs):
+                for line in logs[seen:]:
+                    yield line
+                seen = len(logs)
+            self._refresh()
+            if self.status in terminal:
+                logs = self.get_logs()
+                if seen < len(logs):
+                    for line in logs[seen:]:
+                        yield line
+                if self.status == "failed":
+                    raise TrainingJobFailed(self.id, self._extract_failure_detail())
+                return
+            time.sleep(poll_interval)
+        raise TimeoutError(
+            f"Training logs stream for job {self.id!r} timed out after {timeout}s "
+            f"(current status: {self.status!r})."
+        )
 
     # ------------------------------------------------------------------
     # Rollouts
@@ -815,6 +899,32 @@ def cli_main() -> None:
     p_metrics = sub.add_parser("metrics", help="Show current metrics for a training job")
     p_metrics.add_argument("--job-id", required=True, help="Training job id")
 
+    p_logs = sub.add_parser("logs", help="Fetch or follow logs for a training job")
+    p_logs.add_argument("--job-id", required=True, help="Training job id")
+    p_logs.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional max number of recent log lines",
+    )
+    p_logs.add_argument(
+        "--follow",
+        action="store_true",
+        help="Poll and stream logs until the job reaches a terminal status",
+    )
+    p_logs.add_argument(
+        "--poll-interval",
+        type=float,
+        default=5.0,
+        help="Polling interval in seconds when --follow is used",
+    )
+    p_logs.add_argument(
+        "--timeout",
+        type=float,
+        default=86400,
+        help="Streaming timeout in seconds when --follow is used",
+    )
+
     p_checkpoints = sub.add_parser("checkpoints", help="List checkpoints for a job")
     p_checkpoints.add_argument("--job-id", required=True, help="Training job id")
 
@@ -902,6 +1012,21 @@ def cli_main() -> None:
             elif args.command == "metrics":
                 job = client.TrainingJob.get(args.job_id)
                 print(json.dumps(job.get_metrics(), indent=2))
+            elif args.command == "logs":
+                job = client.TrainingJob.get(args.job_id)
+                if args.follow:
+                    for line in job.stream_logs(
+                        poll_interval=args.poll_interval,
+                        timeout=args.timeout,
+                    ):
+                        print(line)
+                else:
+                    logs = job.get_logs(limit=args.limit)
+                    if not logs:
+                        print("No logs found.")
+                    else:
+                        for line in logs:
+                            print(line)
             elif args.command == "checkpoints":
                 job = client.TrainingJob.get(args.job_id)
                 checkpoints = job.list_checkpoints()
