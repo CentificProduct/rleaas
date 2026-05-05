@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rleaas"
-version = "1.0.3"
+version = "1.1.0"
 description = "Release SDK — RL Environments as a Service by Centific"
 readme = "README.md"
 requires-python = ">=3.9"

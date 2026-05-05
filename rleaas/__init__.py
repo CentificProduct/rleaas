@@ -71,7 +71,7 @@ from rleaas.models import (
     GovernanceConfig,
 )
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 
 def __getattr__(name: str):
