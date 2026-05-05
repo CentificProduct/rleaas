@@ -5,6 +5,12 @@ from rleaas.models.environment import (
     CreateEnvironmentRequest,
     UpdateEnvironmentSystemRequest,
     Scenario,
+    CreateEnvironmentDomain,
+    CreateEnvironmentSdk,
+    CreateEnvironmentCompute,
+    CreateEnvironmentLicense,
+    DOMAIN_TO_VERTICAL,
+    VERTICAL_TO_DOMAIN,
 )
 from rleaas.models.training import (
     TrainingRequest,
@@ -40,6 +46,12 @@ __all__ = [
     "CreateEnvironmentRequest",
     "UpdateEnvironmentSystemRequest",
     "Scenario",
+    "CreateEnvironmentDomain",
+    "CreateEnvironmentSdk",
+    "CreateEnvironmentCompute",
+    "CreateEnvironmentLicense",
+    "DOMAIN_TO_VERTICAL",
+    "VERTICAL_TO_DOMAIN",
     # training
     "TrainingRequest",
     "TrainingResponse",

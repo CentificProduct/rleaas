@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 CreateEnvironmentSdk = Literal["gradio", "docker", "static", "custom"]
+
 CreateEnvironmentLicense = Literal[
     "",
     "apache-2.0",
@@ -15,7 +16,31 @@ CreateEnvironmentLicense = Literal[
     "proprietary",
     "other",
 ]
+
 CreateEnvironmentCompute = Literal["cpu-basic", "cpu-upgrade", "gpu-t4", "gpu-a10"]
+
+# Matches the UI dropdown in Step 1 — Basics (loaded from domains.json).
+# id → UI label shown in the dropdown
+#   "finance"         → 💰 fin-sim
+#   "healthcare"      → 🏥 med-sim
+#   "enterprise"      → 📋 dev-sim  (Jira / project workflows)
+#   "human_resources" → 👥 hr-sim   (Workday / SAP / ADP)
+CreateEnvironmentDomain = Literal[
+    "finance",
+    "healthcare",
+    "enterprise",
+    "human_resources",
+]
+
+# Maps UI domain id → SDK vertical name (and vice-versa for reference).
+DOMAIN_TO_VERTICAL: Dict[str, str] = {
+    "finance":         "FinSim",
+    "healthcare":      "MedSim",
+    "enterprise":      "DevSim",
+    "human_resources": "HRSim",
+}
+
+VERTICAL_TO_DOMAIN: Dict[str, str] = {v: k for k, v in DOMAIN_TO_VERTICAL.items()}
 
 
 class Environment(BaseModel):
@@ -28,6 +53,7 @@ class Environment(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     system: Optional[str] = None
+    domain: Optional[str] = None
     multi_agent: bool = False
     observation_space: Optional[Dict[str, Any]] = None
     action_space: Optional[Dict[str, Any]] = None
@@ -36,7 +62,22 @@ class Environment(BaseModel):
 
 
 class CreateEnvironmentRequest(BaseModel):
-    """Payload for POST /api/environments."""
+    """Payload for POST /api/custom-environments.
+
+    ``domain`` and ``vertical`` serve the same conceptual purpose but use
+    different value spaces:
+
+    * ``domain`` — UI dropdown value (``"finance"``, ``"healthcare"``,
+      ``"enterprise"``, ``"human_resources"``).  Use this when building
+      tooling that mirrors the onboarding wizard.
+    * ``vertical`` — catalog/training name (``"FinSim"``, ``"MedSim"``,
+      ``"DevSim"``, ``"HRSim"``).  Use this when working with training jobs
+      or verifier registries.
+
+    You may supply both; the server stores whichever field it reads.
+    :data:`DOMAIN_TO_VERTICAL` and :data:`VERTICAL_TO_DOMAIN` can be used
+    to convert between the two.
+    """
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -46,6 +87,9 @@ class CreateEnvironmentRequest(BaseModel):
     license: CreateEnvironmentLicense = ""
     sdk: CreateEnvironmentSdk = "gradio"
     compute: CreateEnvironmentCompute = "cpu-basic"
+    domain: Optional[CreateEnvironmentDomain] = None
+    vertical: Optional[str] = None
+    source: str = "custom"
 
 
 class UpdateEnvironmentSystemRequest(BaseModel):

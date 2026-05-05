@@ -63,7 +63,11 @@ def _raise_for_status(response: httpx.Response) -> None:
         return
 
     try:
-        detail = response.json().get("detail", response.text)
+        body = response.json()
+        # The server's _http_exception_handler always sets "detail": null and
+        # puts the human-readable message in "message". Fall back to "message"
+        # so errors like 422 show the actual reason instead of "None".
+        detail = body.get("detail") or body.get("message") or response.text
     except Exception:
         detail = response.text
 
@@ -74,7 +78,7 @@ def _raise_for_status(response: httpx.Response) -> None:
     if code == 402:
         raise QuotaExceededError(detail)
     if code == 404:
-        low = detail.lower()
+        low = detail.lower() if isinstance(detail, str) else str(detail).lower()
         if "environment" in low:
             raise EnvironmentNotFound(detail)
         if "training" in low or "job" in low:
